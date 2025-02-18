@@ -1,84 +1,133 @@
-name: React Native Android Build
+name: Production
+permissions:
+  contents: write
 
 on:
   push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-  workflow_dispatch:
+    branches:
+      - new-isaayu-branch # Adjust this according to your branch name
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 📱 Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: 🔍 Check project structure
-        id: check-structure
-        run: |
-          if [ -d "android" ]; then
-            echo "ANDROID_DIR=android" >> $GITHUB_ENV
-            echo "has_android=true" >> $GITHUB_OUTPUT
-          elif [ -d "app/android" ]; then
-            echo "ANDROID_DIR=app/android" >> $GITHUB_ENV
-            echo "has_android=true" >> $GITHUB_OUTPUT
-          else
-            echo "has_android=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: 🟢 Setup Node.js
+      - name: Install Node.js and npm
         uses: actions/setup-node@v4
         with:
-          node-version: 18
-          cache: "npm"
+          node-version: "20"
 
-      - name: 📦 Install dependencies
-        run: npm install
+      - name: Install Expo CLI
+        run: npm install -g expo-cli
 
-      - name: ☕ Set up JDK 17
-        if: steps.check-structure.outputs.has_android == 'true'
-        uses: actions/setup-java@v4
-        with:
-          distribution: "temurin"
-          java-version: "17"
+      - name: Install Yarn
+        run: npm install --global yarn
 
-      - name: 🤖 Setup Android SDK
-        if: steps.check-structure.outputs.has_android == 'true'
-        uses: android-actions/setup-android@v3
+      - name: Install dependencies
+        run: yarn install
 
-      - name: 🔧 Configure Gradle properties
-        if: steps.check-structure.outputs.has_android == 'true'
+      - name: Install moment-timezone
+        run: yarn add moment-timezone
+
+      - name: Update app version
+        id: update_version
+        env:
+          VERSION_PART: patch # Change this to 'major', 'minor', or 'patch' as needed
         run: |
-          mkdir -p ~/.gradle
-          echo "org.gradle.jvmargs=-Xmx2048m -XX:MaxPermSize=512m -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8" > ~/.gradle/gradle.properties
-          echo "org.gradle.daemon=true" >> ~/.gradle/gradle.properties
-          echo "org.gradle.parallel=true" >> ~/.gradle/gradle.properties
-          echo "org.gradle.configureondemand=true" >> ~/.gradle/gradle.properties
+          current_version=$(jq -r '.expo.version' app.json)
+          IFS='.' read -r major minor patch <<< "$current_version"
+          case "$VERSION_PART" in
+            major)
+              major=$((major + 1))
+              minor=0
+              patch=0
+              ;;
+            minor)
+              minor=$((minor + 1))
+              patch=0
+              ;;
+            patch)
+              patch=$((patch + 1))
+              ;;
+            *)
+              echo "Invalid VERSION_PART value: $VERSION_PART"
+              exit 1
+              ;;
+          esac
+          new_version="$major.$minor.$patch"
+          jq --arg new_version "$new_version" '.expo.version = $new_version' app.json > app.json.tmp && mv app.json.tmp app.json
+          echo "New version: $new_version"
+          echo "new_version=$new_version" >> $GITHUB_ENV
 
-      - name: 📝 Make Gradlew executable
-        if: steps.check-structure.outputs.has_android == 'true'
-        run: cd ${{ env.ANDROID_DIR }} && chmod +x ./gradlew
-
-      - name: 🏗️ Build Android App
-        if: steps.check-structure.outputs.has_android == 'true'
+      - name: Debug information
         run: |
-          cd ${{ env.ANDROID_DIR }}
-          ./gradlew assembleRelease --no-daemon
+          echo "GITHUB_REPOSITORY: $GITHUB_REPOSITORY"
+          echo "GITHUB_REF: $GITHUB_REF"
+          git remote -v
+          git status
+
+      - name: Commit version update
+        env:
+          GH_PAT: ${{  secrets.PAT_SECRET_NAME }}
+        run: |
+          git config --local user.email "pranaykodam.213@gmail.com"
+          git config --local user.name "pranay213"
+          git add app.json
+          git commit -m "Bump version to ${{ env.new_version }}"
+          git push https://${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git HEAD:${GITHUB_REF}
+
+      - name: Create .env file
+        run: |
+          echo "EXPO_PUBLIC_API_URL=https://crm.isaayu.com/api/" >> .env
+          echo "EXPO_PUBLIC_BUILD_TYPE=PRODUCTION" >> .env
+
+      - name: Modify app.json
+        run: |
+          jq '.expo.ios.bundleIdentifier = "com.isaayu.hydroponics" | .expo.android.package = "com.isaayu.hydroponics"' app.json > app.json.tmp && mv app.json.tmp app.json
+          echo "Updated app.json with new bundleIdentifier and package"
+
+      - name: Expo prebuild
+        run: npx expo prebuild
+
+      - name: Show all folders
+        run: ls
+
+      - name: Remove destination res directory
+        run: sudo rm -rf ${{ github.workspace }}/android/app/src/main/res
+
+      - name: Create res directory
+        run: sudo mkdir -p ${{ github.workspace }}/android/app/src/main/res
+
+      - name: Remove and copy files from backup
+        run: |
+          sudo rm -f ${{ github.workspace }}/android/app/src/main/AndroidManifest.xml
+          sudo rm -f ${{ github.workspace }}/android/app/src/main/ic_launcher-playstore.png
+          sudo cp ${{ github.workspace }}/android_prod/AndroidManifest.xml ${{ github.workspace }}/android/app/src/main/AndroidManifest.xml
+          sudo cp ${{ github.workspace }}/android_prod/ic_launcher-playstore.png ${{ github.workspace }}/android/app/src/main/ic_launcher-playstore.png
+
+      - name: Copy res directory
+        run: sudo cp -r ${{ github.workspace }}/android_prod/res ${{ github.workspace }}/android/app/src/main
+
+      - name: Check the files in directory
+        run: |
+          cd ${{ github.workspace }}/android/app/src/main/res
+          ls
+
+      - name: Build Android Release
+        run: cd android && ./gradlew app:assembleRelease
+
+      - name: Change Script Permissions
+        run: chmod +x ${{ github.workspace }}/prod.js
+
+      - name: Execute Script
+        run: node ${{ github.workspace }}/prod.js
 
       - name: 📤 Upload APK
-        if: steps.check-structure.outputs.has_android == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: app-release
-          path: ${{ env.ANDROID_DIR }}/app/build/outputs/apk/release/app-release.apk
+          path: android/app/build/outputs/apk/release/app-release.apk
           retention-days: 14
-
-      - name: ⚠️ Handle Expo project
-        if: steps.check-structure.outputs.has_android == 'false'
-        run: |
-          echo "No Android directory found. This might be an Expo project without native code."
-          echo "If this is an Expo project, you'll need to use EAS Build or eject to the bare workflow first."
-          npm install -g expo-cli
-          expo diagnostics
