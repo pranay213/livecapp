@@ -15,6 +15,19 @@ jobs:
       - name: 📱 Checkout repository
         uses: actions/checkout@v4
 
+      - name: 🔍 Check project structure
+        id: check-structure
+        run: |
+          if [ -d "android" ]; then
+            echo "ANDROID_DIR=android" >> $GITHUB_ENV
+            echo "has_android=true" >> $GITHUB_OUTPUT
+          elif [ -d "app/android" ]; then
+            echo "ANDROID_DIR=app/android" >> $GITHUB_ENV
+            echo "has_android=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_android=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: 🟢 Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -25,15 +38,18 @@ jobs:
         run: npm install
 
       - name: ☕ Set up JDK 17
+        if: steps.check-structure.outputs.has_android == 'true'
         uses: actions/setup-java@v4
         with:
           distribution: "temurin"
           java-version: "17"
 
       - name: 🤖 Setup Android SDK
+        if: steps.check-structure.outputs.has_android == 'true'
         uses: android-actions/setup-android@v3
 
       - name: 🔧 Configure Gradle properties
+        if: steps.check-structure.outputs.has_android == 'true'
         run: |
           mkdir -p ~/.gradle
           echo "org.gradle.jvmargs=-Xmx2048m -XX:MaxPermSize=512m -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8" > ~/.gradle/gradle.properties
@@ -42,16 +58,27 @@ jobs:
           echo "org.gradle.configureondemand=true" >> ~/.gradle/gradle.properties
 
       - name: 📝 Make Gradlew executable
-        run: cd android && chmod +x ./gradlew
+        if: steps.check-structure.outputs.has_android == 'true'
+        run: cd ${{ env.ANDROID_DIR }} && chmod +x ./gradlew
 
       - name: 🏗️ Build Android App
+        if: steps.check-structure.outputs.has_android == 'true'
         run: |
-          cd android
+          cd ${{ env.ANDROID_DIR }}
           ./gradlew assembleRelease --no-daemon
 
       - name: 📤 Upload APK
+        if: steps.check-structure.outputs.has_android == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: app-release
-          path: android/app/build/outputs/apk/release/app-release.apk
+          path: ${{ env.ANDROID_DIR }}/app/build/outputs/apk/release/app-release.apk
           retention-days: 14
+
+      - name: ⚠️ Handle Expo project
+        if: steps.check-structure.outputs.has_android == 'false'
+        run: |
+          echo "No Android directory found. This might be an Expo project without native code."
+          echo "If this is an Expo project, you'll need to use EAS Build or eject to the bare workflow first."
+          npm install -g expo-cli
+          expo diagnostics
