@@ -84,10 +84,10 @@ jobs:
           echo "EXPO_PUBLIC_API_URL=https://crm.isaayu.com/api/" >> .env
           echo "EXPO_PUBLIC_BUILD_TYPE=PRODUCTION" >> .env
 
-      - name: Modify app.json
-        run: |
-          jq '.expo.ios.bundleIdentifier = "com.isaayu.hydroponics" | .expo.android.package = "com.isaayu.hydroponics"' app.json > app.json.tmp && mv app.json.tmp app.json
-          echo "Updated app.json with new bundleIdentifier and package"
+      # - name: Modify app.json
+      #   run: |
+      #     jq '.expo.ios.bundleIdentifier = "com.isaayu.hydroponics" | .expo.android.package = "com.isaayu.hydroponics"' app.json > app.json.tmp && mv app.json.tmp app.json
+      #     echo "Updated app.json with new bundleIdentifier and package"
 
       - name: Expo prebuild
         run: npx expo prebuild
@@ -101,20 +101,20 @@ jobs:
       - name: Create res directory
         run: sudo mkdir -p ${{ github.workspace }}/android/app/src/main/res
 
-      - name: Remove and copy files from backup
-        run: |
-          sudo rm -f ${{ github.workspace }}/android/app/src/main/AndroidManifest.xml
-          sudo rm -f ${{ github.workspace }}/android/app/src/main/ic_launcher-playstore.png
-          sudo cp ${{ github.workspace }}/android_prod/AndroidManifest.xml ${{ github.workspace }}/android/app/src/main/AndroidManifest.xml
-          sudo cp ${{ github.workspace }}/android_prod/ic_launcher-playstore.png ${{ github.workspace }}/android/app/src/main/ic_launcher-playstore.png
+      # - name: Remove and copy files from backup
+      #   run: |
+      #     sudo rm -f ${{ github.workspace }}/android/app/src/main/AndroidManifest.xml
+      #     sudo rm -f ${{ github.workspace }}/android/app/src/main/ic_launcher-playstore.png
+      #     sudo cp ${{ github.workspace }}/android_prod/AndroidManifest.xml ${{ github.workspace }}/android/app/src/main/AndroidManifest.xml
+      #     sudo cp ${{ github.workspace }}/android_prod/ic_launcher-playstore.png ${{ github.workspace }}/android/app/src/main/ic_launcher-playstore.png
 
-      - name: Copy res directory
-        run: sudo cp -r ${{ github.workspace }}/android_prod/res ${{ github.workspace }}/android/app/src/main
+      # - name: Copy res directory
+      #   run: sudo cp -r ${{ github.workspace }}/android_prod/res ${{ github.workspace }}/android/app/src/main
 
-      - name: Check the files in directory
-        run: |
-          cd ${{ github.workspace }}/android/app/src/main/res
-          ls
+      # - name: Check the files in directory
+      #   run: |
+      #     cd ${{ github.workspace }}/android/app/src/main/res
+      #     ls
 
       - name: Build Android Release
         run: cd android && ./gradlew app:assembleRelease
