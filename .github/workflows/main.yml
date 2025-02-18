@@ -5,7 +5,7 @@ permissions:
 on:
   push:
     branches:
-      - new-isaayu-branch # Adjust this according to your branch name
+      - main
 
 jobs:
   build:
